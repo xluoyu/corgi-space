@@ -191,3 +191,94 @@ export class SystemService {
 
 ## token
 
+关于`JWT`与`token`就不在过多介绍了，直接列出代码。
+
+首先需要创建一个`Auth`模块，用于处理接口权限等工作。
+
+先使用`JWT`来生成一个`token`，在`module`引入`JwtModule`并配置自定义的密钥即可。
+
+```ts
+// src/auth/auth.module.ts
+import { Module } from "@nestjs/common"
+import { JwtModule } from "@nestjs/jwt"
+import { AuthService } from "./auth.server"
+@Module({
+	imports: [
+		JwtModule.register({
+			secret: process.env.JWT_SECRET // 设置私钥
+		})
+	],
+	providers: [AuthService],
+	exports: [AuthService]
+})
+export class AuthModule {}
+```
+
+在`service`中就可以引用`JwtService`，创建一个用于生成token的服务，传入需要在接口响应时需要的值。
+
+```ts
+// src/auth/auth.service.ts
+import { Injectable } from "@nestjs/common"
+import { JwtService } from "@nestjs/jwt"
+import { SystemMemberEntity } from "../system/entities/system.entity"
+
+export type TokenInfo = {
+	memberId: number
+	name: string
+	roleId: number
+}
+
+const Expire_Time = 5 * 24 * 60 * 60 // 五天
+
+@Injectable()
+export class AuthService {
+	constructor(private jwtService: JwtService) {}
+
+	// 生成token
+	async createToken(user: SystemMemberEntity) {
+		const token = this.jwtService.sign({
+			memberId: user.id,
+			name: user.name,
+			roleId: user.roleId
+		})
+
+		return token
+	}
+}
+```
+
+之后就可以在登录时调用生成token（记得引入module）
+
+```ts
+// src/system/system.service.ts
+
+// ...
+import { AuthService } from "../auth/auth.server"
+
+
+@Injectable()
+export class SystemService {
+	constructor(
+		@InjectRepository(SystemMemberEntity)
+		private readonly systemMemberEntity: Repository<SystemMemberEntity>,
+
+		private readonly authService: AuthService
+	) {}
+
+	async login(member: MemberDto) {
+    // ...
+		const token = await this.authService.createToken(result)
+
+    return {
+      memberId: result.id,
+      token,
+      ...pick(result, ["name", "email", "photo", "roleId", "status"])
+    }
+  }
+}
+```
+
+此时在登录接口就可以返回`token`。
+
+## token的用法
+
